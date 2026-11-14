@@ -41,26 +41,25 @@ function RootNavigator() {
   const segments = useSegments();
   const router = useRouter();
 
-  // Restaurar la sesión guardada una sola vez.
-  useEffect(() => {
-    void fetchProfile();
-  }, [fetchProfile]);
-
   // Realtime: comidas de la pareja.
   useMealsRealtime(profile?.couple_id);
 
-  // Mantener el perfil sincronizado con los cambios de sesión.
+  // Firebase restaura la sesión de forma asíncrona: hay que esperar a
+  // onAuthStateChanged (leer auth.currentUser al arrancar da null y cerraba la sesión).
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
+    if (!isFirebaseConfigured) {
+      void fetchProfile();
+      return;
+    }
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        setProfile(null);
+        // Los perfiles de modo local no tienen usuario de Firebase: no se borran.
+        if (useStore.getState().profile?.couple_id !== 'local-couple') setProfile(null);
+        useStore.setState({ initialized: true, isLoading: false });
         return;
       }
-      setTimeout(() => {
-        void fetchProfile();
-      }, 0);
+      void fetchProfile();
     });
 
     return () => unsubscribe();

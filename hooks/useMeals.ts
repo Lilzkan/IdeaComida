@@ -3,7 +3,6 @@ import {
   collection,
   query,
   where,
-  orderBy,
   getDocs,
   addDoc,
   deleteDoc,
@@ -43,11 +42,8 @@ async function fetchMeals(coupleId: string, brandId?: string): Promise<Meal[]> {
   }
 
   const mealsRef = collection(db, 'meals');
-  const q = query(
-    mealsRef,
-    where('couple_id', '==', coupleId),
-    orderBy('eaten_at', 'desc')
-  );
+  // Sin orderBy en la consulta: evita requerir un índice compuesto en Firestore.
+  const q = query(mealsRef, where('couple_id', '==', coupleId));
 
   const querySnapshot = await getDocs(q);
   const meals: Meal[] = [];
@@ -66,6 +62,7 @@ async function fetchMeals(coupleId: string, brandId?: string): Promise<Meal[]> {
     });
   });
 
+  meals.sort((a, b) => new Date(b.eaten_at).getTime() - new Date(a.eaten_at).getTime());
   if (brandId) {
     return meals.filter((m) => m.brand_id === brandId);
   }

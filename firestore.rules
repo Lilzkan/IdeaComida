@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function myCouple() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.couple_id;
+    }
+
+    // Cada usuario lee y escribe solo su perfil.
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Se necesita leer parejas para unirse por código de invitación.
+    match /couples/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.created_by == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.created_by == request.auth.uid;
+    }
+
+    // Comidas: solo los miembros de la pareja.
+    match /meals/{id} {
+      allow read, delete: if signedIn() && resource.data.couple_id == myCouple();
+      allow create: if signedIn() && request.resource.data.couple_id == myCouple();
+    }
+
+    // Ofertas: lectura pública para usuarios; se administran desde la consola.
+    match /deals/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+  }
+}

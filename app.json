@@ -14,12 +14,17 @@
       "package": "com.ideacomida.app"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "name": "IdeaComida",
+      "shortName": "IdeaComida",
+      "display": "standalone",
+      "themeColor": "#FF8FA3",
+      "backgroundColor": "#FFFFFF",
+      "lang": "es"
     },
     "plugins": [
       "expo-router",
-      "expo-font",
-      "expo-status-bar"
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
