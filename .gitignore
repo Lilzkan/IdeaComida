@@ -1,0 +1,35 @@
+# Dependencias
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Entorno (¡nunca subir credenciales!)
+.env
+.env.local
+.env.*.local
+
+# Nativos generados
+/android
+/ios
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Logs y sistema
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/

@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "IdeaComida",
+    "slug": "ideacomida",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "ideacomida",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ideacomida.app"
+    },
+    "android": {
+      "package": "com.ideacomida.app"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
