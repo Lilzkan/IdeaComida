@@ -298,6 +298,10 @@ export default function Historial() {
               {dayMeals.map((item) => {
                 const brand = BRANDS_BY_ID[item.brand_id];
                 const reviewsList = Object.values(item.reviews ?? {});
+                const isCreator = Boolean(profile?.name && item.added_by && profile.name === item.added_by);
+                const hasMyReview = Boolean(profile?.name && item.reviews?.[profile.name]);
+                const partnerName = profile?.name === 'Ignacio' ? 'Isidora' : 'Ignacio';
+                const hasPartnerReview = Boolean(item.reviews?.[partnerName]);
 
                 return (
                   <View key={item.id} style={[styles.card, SHADOWS.soft]}>
@@ -345,18 +349,24 @@ export default function Historial() {
                           </View>
                         ) : null}
 
-                        <BouncyPressable
-                          onPress={() => openReviewModal(item)}
-                          haptic
-                          style={styles.addReviewBtn}
-                        >
-                          <MessageSquare size={12} color={COLORS.primary} />
-                          <Text style={styles.addReviewText}>
-                            {item.reviews?.[profile?.name ?? '']
-                              ? 'Editar mi reseña'
-                              : '💬 Calificar mi versión'}
-                          </Text>
-                        </BouncyPressable>
+                        {/* Si la persona activa NO creó esta comida y aún no ha dado su opinión */}
+                        {!isCreator && !hasMyReview && (
+                          <BouncyPressable
+                            onPress={() => openReviewModal(item)}
+                            haptic
+                            style={styles.addReviewBtn}
+                          >
+                            <MessageSquare size={12} color={COLORS.primary} />
+                            <Text style={styles.addReviewText}>💬 Calificar mi versión</Text>
+                          </BouncyPressable>
+                        )}
+
+                        {/* Si el creador ve la tarjeta y su pareja aún no califica */}
+                        {isCreator && !hasPartnerReview && (
+                          <View style={styles.waitingBadge}>
+                            <Text style={styles.waitingText}>⏳ Esperando la opinión de {partnerName}</Text>
+                          </View>
+                        )}
                       </View>
 
                       <BouncyPressable
@@ -660,6 +670,17 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   addReviewText: { fontSize: 11, fontFamily: FONTS.semibold, color: COLORS.primary },
+  waitingBadge: {
+    marginTop: 6,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignSelf: 'flex-start',
+  },
+  waitingText: { fontSize: 10, color: COLORS.textSecondary, fontFamily: FONTS.semibold },
   deleteButton: {
     width: 34,
     height: 34,
