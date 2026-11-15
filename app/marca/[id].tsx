@@ -8,14 +8,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Clock, Plus, Sparkles, Star } from 'lucide-react-native';
+import { Clock, Plus, Star } from 'lucide-react-native';
 
-import GiftDealCard from '@/components/GiftDealCard';
 import StarRating from '@/components/StarRating';
 import BouncyPressable from '@/components/ui/BouncyPressable';
 import Button from '@/components/ui/Button';
@@ -25,16 +24,14 @@ import { COLORS } from '@/constants/colors';
 import { BRANDS_BY_ID, type Brand } from '@/constants/brands';
 import { FONTS, RADIUS, SHADOWS } from '@/constants/theme';
 import { useAddMeal, useMeals } from '@/hooks/useMeals';
-import { getErrorMessage } from '@/lib/errors';
 import { formatMealDate, formatMealTime, timeAgo } from '@/lib/format';
+import { getErrorMessage } from '@/lib/errors';
 import { useStore } from '@/store/useStore';
 
 export default function BrandScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const profile = useStore((state) => state.profile);
-  const savedDeals = useStore((state) => state.savedDeals);
-  const toggleSavedDeal = useStore((state) => state.toggleSavedDeal);
   const brand: Brand | undefined = id ? BRANDS_BY_ID[id] : undefined;
 
   const { data: meals = [], isLoading } = useMeals(profile?.couple_id, brand?.id);
@@ -42,30 +39,16 @@ export default function BrandScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [pendingItem, setPendingItem] = useState<string | null>(null);
+  const [pendingPrice, setPendingPrice] = useState('');
   const [selectedRating, setSelectedRating] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
+  // Calificación Promedio Histórica de la Marca
   const avgRating = useMemo(() => {
     const rated = meals.filter((meal) => meal.rating != null && meal.rating > 0);
     if (rated.length === 0) return 0;
     return rated.reduce((sum, meal) => sum + (meal.rating ?? 0), 0) / rated.length;
-  }, [meals]);
-
-  /** Repetición reciente: dos visitas a la misma marca con menos de 7 días. */
-  const recentRepeat = useMemo(() => {
-    const sorted = [...meals].sort(
-      (a, b) => new Date(a.eaten_at).getTime() - new Date(b.eaten_at).getTime()
-    );
-    if (sorted.length < 2) return null;
-    const latest = sorted[sorted.length - 1]!;
-    const previous = sorted[sorted.length - 2]!;
-    const days = Math.round(
-      (new Date(latest.eaten_at).getTime() - new Date(previous.eaten_at).getTime()) /
-        (1000 * 60 * 60 * 24)
-    );
-    return days <= 7 ? { days: Math.max(days, 0), latest } : null;
   }, [meals]);
 
   const openModal = (item: string | null) => {
@@ -82,6 +65,7 @@ export default function BrandScreen() {
     }
 
     setPendingItem(item);
+    setPendingPrice('');
     setSelectedRating(0);
     setError(null);
     setModalVisible(true);
@@ -91,6 +75,7 @@ export default function BrandScreen() {
     if (saving) return;
     setModalVisible(false);
     setPendingItem(null);
+    setPendingPrice('');
     setSelectedRating(0);
     setError(null);
   };
@@ -101,11 +86,14 @@ export default function BrandScreen() {
     setSaving(true);
     setError(null);
 
+    const numericPrice = pendingPrice.trim() ? parseInt(pendingPrice.replace(/\D/g, ''), 10) : null;
+
     try {
       await addMeal.mutateAsync({
         couple_id: profile.couple_id,
         brand_id: brand.id,
-        item: pendingItem,
+        item: pendingItem?.trim() || null,
+        price: numericPrice && !isNaN(numericPrice) ? numericPrice : null,
         rating: selectedRating > 0 ? selectedRating : null,
         eaten_at: new Date().toISOString(),
         added_by: profile?.name ?? null,
@@ -113,18 +101,13 @@ export default function BrandScreen() {
 
       setModalVisible(false);
       setPendingItem(null);
+      setPendingPrice('');
       setSelectedRating(0);
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo guardar la comida.'));
     } finally {
       setSaving(false);
     }
-  };
-
-  const copyCode = async (code: string) => {
-    await Clipboard.setStringAsync(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode((current) => (current === code ? null : current)), 1800);
   };
 
   if (!brand) {
@@ -169,116 +152,30 @@ export default function BrandScreen() {
           accessibilityLabel="Volver"
           style={styles.backButton}
         >
-          <ArrowLeft size={18} color={COLORS.primary} />
+          <Text style={{ fontSize: 18 }}>←</Text>
         </BouncyPressable>
-        <Text style={styles.headerTitle}>Antojito</Text>
+        <Text style={styles.headerTitle}>{brand.name}</Text>
         <View style={{ width: 38 }} />
       </View>
 
-      <LinearGradient
-        colors={[`${brand.color}33`, COLORS.surface, COLORS.surfaceAlt]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.hero, SHADOWS.card]}
-      >
-        <View style={[styles.heroEmoji, { backgroundColor: `${COLORS.white}B0` }]}>
-          <Text style={{ fontSize: 52 }}>{brand.emoji}</Text>
+      <View style={[styles.heroCard, SHADOWS.card]}>
+        <View style={[styles.heroBubble, { backgroundColor: `${brand.color}2A` }]}>
+          <Text style={styles.heroEmoji}>{brand.emoji}</Text>
         </View>
+        <Text style={styles.brandTitle}>{brand.name}</Text>
 
-        <View style={styles.heroPill}>
-          <Text style={styles.heroPillText}>{brand.treat} antojo favorito</Text>
-        </View>
-
-        <Text style={styles.brandName}>{brand.name}</Text>
-
-        {avgRating > 0 ? (
-          <View style={styles.heroRating}>
-            <StarRating value={avgRating} size={15} readOnly />
-            <Text style={styles.avgRatingText}>
-              {avgRating.toFixed(1)} · {meals.filter((m) => (m.rating ?? 0) > 0).length} opiniones
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.noRating}>Aún sin calificaciones</Text>
-        )}
-      </LinearGradient>
-
-      {recentRepeat && (
-        <View style={[styles.repeatBanner, SHADOWS.soft]}>
-          <Text style={styles.repeatEmoji}>🙈</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.repeatTitle}>Ya comieron aquí hace poquito</Text>
-            <Text style={styles.repeatText}>
-              {recentRepeat.days === 0
-                ? 'Fue hoy mismo, ¡pero se vale repetir!'
-                : `La última vez fue hace ${recentRepeat.days} ${
-                    recentRepeat.days === 1 ? 'día' : 'días'
-                  }.`}{' '}
-              ¿Seguro quieren otra vez {brand.treat}?
-            </Text>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.sectionHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.sectionTitle}>¿Qué les apeteció?</Text>
-          <Text style={styles.sectionSub}>Toca un platillo para registrarlo y calificarlo.</Text>
-        </View>
-        <Sparkles size={16} color={COLORS.warning} />
-      </View>
-
-      <View style={styles.itemsList}>
-        {brand.items.map((item) => (
-          <BouncyPressable
-            key={item}
-            onPress={() => openModal(item)}
-            haptic
-            accessibilityRole="button"
-            accessibilityLabel={`Registrar ${item}`}
-            style={[styles.itemCard, SHADOWS.soft]}
-          >
-            <Text style={styles.itemText}>{item}</Text>
-            <View style={styles.itemAdd}>
-              <Plus size={15} color={COLORS.textOnPrimary} />
-            </View>
-          </BouncyPressable>
-        ))}
-      </View>
-
-      <View style={styles.sectionHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.sectionTitle}>Cupones de {brand.name}</Text>
-          <Text style={styles.sectionSub}>Guarda el corazón y muéstralo en caja.</Text>
+        <View style={styles.ratingBadge}>
+          {avgRating > 0 ? (
+            <>
+              <Star size={14} color={COLORS.accent} fill={COLORS.accent} />
+              <Text style={styles.ratingValueText}>{avgRating.toFixed(1)}/5</Text>
+              <Text style={styles.ratingCountText}>({meals.length} visitas)</Text>
+            </>
+          ) : (
+            <Text style={styles.ratingCountText}>Sin calificaciones de todos los tiempos</Text>
+          )}
         </View>
       </View>
-
-      {brand.defaultDeals.length === 0 ? (
-        <View style={[styles.emptyInline, SHADOWS.soft]}>
-          <Text style={styles.emptyEmoji}>🎟️</Text>
-          <Text style={styles.emptyInlineText}>No hay cupones cargados para esta marca.</Text>
-        </View>
-      ) : (
-        <View style={styles.dealsList}>
-          {brand.defaultDeals.map((deal) => {
-            const dealId = `${brand.id}-${deal.title}`;
-            return (
-              <GiftDealCard
-                key={deal.title}
-                id={dealId}
-                brand={brand}
-                title={deal.title}
-                description={deal.description}
-                code={deal.code}
-                saved={savedDeals.includes(dealId)}
-                copied={deal.code != null && copiedCode === deal.code}
-                onToggleSave={toggleSavedDeal}
-                onCopy={copyCode}
-              />
-            );
-          })}
-        </View>
-      )}
 
       <View style={styles.sectionHeader}>
         <View style={{ flex: 1 }}>
@@ -316,6 +213,11 @@ export default function BrandScreen() {
                   <Text style={styles.historyItem}>
                     {meal.item ?? 'Sin platillo especificado'}
                   </Text>
+                  {meal.price != null && meal.price > 0 && (
+                    <Text style={styles.historyPrice}>
+                      ${meal.price.toLocaleString('es-CL')} CLP
+                    </Text>
+                  )}
                 </View>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -334,6 +236,7 @@ export default function BrandScreen() {
         </View>
       )}
 
+      {/* Modal para registrar comida */}
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={closeModal}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -343,76 +246,58 @@ export default function BrandScreen() {
           <View style={[styles.modalCard, SHADOWS.card]}>
             <View style={styles.modalHeader}>
               <Text style={{ fontSize: 26 }}>{brand.treat}</Text>
-              <Text style={styles.modalTitle}>¿Qué comieron?</Text>
+              <Text style={styles.modalTitle}>Registrar antojo en {brand.name}</Text>
             </View>
-            <Text style={styles.modalSub}>
-              {pendingItem ? `Califica ${pendingItem}` : `Elige un platillo de ${brand.name}`}
-            </Text>
 
-            <ScrollView
-              style={{ maxHeight: 190 }}
-              contentContainerStyle={styles.modalItems}
-              showsVerticalScrollIndicator={false}
-            >
-              <Pressable
-                onPress={() => setPendingItem(null)}
-                style={[styles.modalChip, pendingItem === null && styles.modalChipActive]}
-              >
-                <Text
-                  style={[
-                    styles.modalChipText,
-                    pendingItem === null && styles.modalChipTextActive,
-                  ]}
-                >
-                  Solo la marca
-                </Text>
-              </Pressable>
-              {brand.items.map((item) => (
-                <Pressable
-                  key={item}
-                  onPress={() => setPendingItem(item)}
-                  style={[styles.modalChip, pendingItem === item && styles.modalChipActive]}
-                >
-                  <Text
-                    style={[
-                      styles.modalChipText,
-                      pendingItem === item && styles.modalChipTextActive,
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </Pressable>
-              ))}
+            <ScrollView contentContainerStyle={{ gap: 10 }}>
+              <Text style={styles.label}>Nombre o plato (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ej. Combo Whopper o dejar en blanco"
+                placeholderTextColor={COLORS.textSecondary}
+                value={pendingItem ?? ''}
+                onChangeText={setPendingItem}
+              />
+
+              <Text style={styles.label}>Costo / Gasto en CLP (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ej. 6990"
+                keyboardType="numeric"
+                placeholderTextColor={COLORS.textSecondary}
+                value={pendingPrice}
+                onChangeText={setPendingPrice}
+              />
+
+              <Text style={styles.modalStarsLabel}>Calificación (opcional)</Text>
+              <StarRating
+                value={selectedRating}
+                onChange={(value) => setSelectedRating(value === selectedRating ? 0 : value)}
+                size={32}
+                color={COLORS.accent}
+                disabledColor={COLORS.border}
+                showText
+              />
+
+              {error && <Text style={styles.modalError}>{error}</Text>}
+
+              <View style={styles.modalBtnRow}>
+                <Button
+                  label="Cancelar"
+                  variant="ghost"
+                  onPress={closeModal}
+                  fullWidth={false}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  label="Guardar"
+                  onPress={saveMeal}
+                  loading={saving}
+                  fullWidth={false}
+                  style={{ flex: 1 }}
+                />
+              </View>
             </ScrollView>
-
-            <Text style={styles.modalStarsLabel}>Calificación (opcional)</Text>
-            <StarRating
-              value={selectedRating}
-              onChange={(value) => setSelectedRating(value === selectedRating ? 0 : value)}
-              size={32}
-              color={COLORS.accent}
-              disabledColor={COLORS.border}
-              showText
-            />
-
-            {error && <Text style={styles.modalError}>{error}</Text>}
-
-            <View style={styles.modalBtnRow}>
-              <Button
-                label="Cancelar"
-                variant="ghost"
-                onPress={closeModal}
-                fullWidth={false}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label="Guardar"
-                onPress={saveMeal}
-                loading={saving}
-                fullWidth={false}
-                style={{ flex: 1 }}
-              />
-            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -421,13 +306,13 @@ export default function BrandScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 24 },
-  notFoundTitle: { fontFamily: FONTS.bold, fontSize: 20, color: COLORS.textPrimary },
-  notFoundText: { fontSize: 13, color: COLORS.textSecondary, marginBottom: 8 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  notFoundTitle: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.textPrimary },
+  notFoundText: { fontSize: 12.5, color: COLORS.textSecondary },
   header: {
     paddingHorizontal: 16,
     paddingTop: 6,
-    paddingBottom: 10,
+    paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -442,140 +327,99 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.textPrimary },
-  hero: {
-    marginHorizontal: 20,
+  headerTitle: { fontFamily: FONTS.bold, fontSize: 17, color: COLORS.textPrimary },
+  heroCard: {
+    backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    marginHorizontal: 20,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: 'center',
+    marginBottom: 20,
   },
-  heroEmoji: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  heroBubble: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
   },
-  heroPill: {
-    backgroundColor: `${COLORS.white}B8`,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    marginBottom: 6,
-  },
-  heroPillText: {
-    fontFamily: FONTS.semibold,
-    fontSize: 10.5,
-    color: COLORS.textSecondary,
-    letterSpacing: 0.3,
-  },
-  brandName: { fontFamily: FONTS.bold, fontSize: 26, color: COLORS.textPrimary },
-  heroRating: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  avgRatingText: { fontSize: 11.5, color: COLORS.textSecondary },
-  noRating: { fontSize: 11.5, color: COLORS.textSecondary, marginTop: 6 },
-  repeatBanner: {
+  heroEmoji: { fontSize: 44 },
+  brandTitle: { fontFamily: FONTS.bold, fontSize: 24, color: COLORS.textPrimary },
+  ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 20,
-    marginTop: 14,
-    padding: 14,
-    borderRadius: RADIUS.lg,
+    gap: 5,
+    marginTop: 8,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: RADIUS.pill,
     borderWidth: 1,
-    borderColor: `${COLORS.warning}55`,
-    backgroundColor: COLORS.surfaceWarm,
+    borderColor: COLORS.border,
   },
-  repeatEmoji: { fontSize: 26 },
-  repeatTitle: { fontFamily: FONTS.bold, fontSize: 13.5, color: COLORS.textPrimary },
-  repeatText: { fontSize: 11.5, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
+  ratingValueText: { fontFamily: FONTS.bold, fontSize: 13, color: COLORS.textPrimary },
+  ratingCountText: { fontSize: 11, color: COLORS.textSecondary },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
     marginHorizontal: 20,
-    marginTop: 22,
+    marginTop: 10,
     marginBottom: 10,
   },
   sectionTitle: { fontFamily: FONTS.bold, fontSize: 17, color: COLORS.textPrimary },
-  sectionSub: { fontSize: 11.5, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
-  itemsList: { paddingHorizontal: 20, gap: 9 },
-  itemCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.md,
-    paddingVertical: 14,
-    paddingHorizontal: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  itemText: { fontSize: 14, color: COLORS.textPrimary, flex: 1, paddingRight: 10 },
-  itemAdd: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dealsList: { paddingHorizontal: 20 },
+  sectionSub: { fontSize: 11.5, color: COLORS.textSecondary, marginTop: 2 },
   emptyInline: {
     marginHorizontal: 20,
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 20,
+    padding: 22,
     alignItems: 'center',
     gap: 6,
   },
   emptyEmoji: { fontSize: 28 },
-  emptyInlineText: {
-    fontSize: 12.5,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-  historyList: { paddingHorizontal: 20, gap: 9 },
+  emptyInlineText: { fontSize: 12, color: COLORS.textSecondary, textAlign: 'center' },
+  historyList: { paddingHorizontal: 20, gap: 10 },
   historyCard: {
     backgroundColor: COLORS.white,
-    borderRadius: RADIUS.md,
-    padding: 13,
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 10,
   },
-  historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1 },
+  historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   historyIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  historyDate: { fontSize: 10.5, color: COLORS.textSecondary },
-  historyItem: { fontSize: 13.5, fontFamily: FONTS.semibold, color: COLORS.textPrimary, marginTop: 1 },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  ratingText: { fontSize: 10.5, fontFamily: FONTS.bold, color: COLORS.textSecondary },
+  historyDate: { fontSize: 10.5, color: COLORS.textSecondary, fontFamily: FONTS.semibold },
+  historyItem: { fontFamily: FONTS.bold, fontSize: 13.5, color: COLORS.textPrimary, marginTop: 1 },
+  historyPrice: { fontFamily: FONTS.bold, fontSize: 12, color: COLORS.primary, marginTop: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingText: { fontSize: 11, color: COLORS.textPrimary, fontFamily: FONTS.bold },
   noRatingSmall: { fontSize: 10, color: COLORS.textSecondary },
   ago: { fontSize: 10, color: COLORS.textSecondary },
   fab: {
     position: 'absolute',
-    bottom: 26,
-    right: 22,
-    backgroundColor: COLORS.primary,
-    borderRadius: 29,
+    bottom: 24,
+    right: 20,
     width: 58,
     height: 58,
+    borderRadius: 29,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -587,43 +431,36 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   modalCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: RADIUS.lg,
-    padding: 20,
     width: '100%',
-    maxWidth: 430,
-    maxHeight: '88%',
+    maxWidth: 400,
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    padding: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  modalTitle: { fontFamily: FONTS.bold, fontSize: 19, color: COLORS.textPrimary },
-  modalSub: {
-    fontSize: 12.5,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 14,
-  },
-  modalItems: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 4 },
-  modalChip: {
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  modalTitle: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.textPrimary },
+  modalSub: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 14 },
+  label: { fontSize: 12, fontFamily: FONTS.semibold, color: COLORS.textSecondary, marginTop: 4 },
+  input: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.textPrimary,
     backgroundColor: COLORS.background,
+    fontFamily: FONTS.regular,
   },
-  modalChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  modalChipText: { fontSize: 12, color: COLORS.textPrimary, fontFamily: FONTS.regular },
-  modalChipTextActive: { color: COLORS.textOnPrimary, fontFamily: FONTS.semibold },
   modalStarsLabel: {
-    fontSize: 12.5,
-    color: COLORS.textSecondary,
-    marginTop: 18,
-    marginBottom: 8,
     fontFamily: FONTS.semibold,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 8,
+    textAlign: 'center',
   },
-  modalError: { color: COLORS.danger, fontSize: 12, marginTop: 10 },
+  modalError: { color: COLORS.danger, fontSize: 12, marginTop: 8 },
   modalBtnRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
 });

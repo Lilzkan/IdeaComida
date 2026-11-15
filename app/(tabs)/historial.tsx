@@ -1,13 +1,22 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Link2, Sparkles, Star, Trash2, User } from 'lucide-react-native';
+import { DollarSign, Link2, Sparkles, Star, Trash2, User } from 'lucide-react-native';
 
 import MealCalendar from '@/components/MealCalendar';
 import StarRating from '@/components/StarRating';
 import BouncyPressable from '@/components/ui/BouncyPressable';
+import Button from '@/components/ui/Button';
 import Screen from '@/components/ui/Screen';
 import Text from '@/components/ui/Text';
 import { COLORS } from '@/constants/colors';
@@ -33,6 +42,8 @@ export default function Historial() {
   const deleteMeal = useDeleteMeal(profile?.couple_id);
 
   const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -57,6 +68,19 @@ export default function Historial() {
     };
   }, [meals]);
 
+  // Gasto del mes seleccionado exclusivamente
+  const monthSpend = useMemo(() => {
+    return meals
+      .filter((meal) => {
+        const d = new Date(meal.eaten_at);
+        return (
+          d.getMonth() === selectedDate.getMonth() &&
+          d.getFullYear() === selectedDate.getFullYear()
+        );
+      })
+      .reduce((sum, meal) => sum + (meal.price ?? 0), 0);
+  }, [meals, selectedDate]);
+
   const repeats = useMemo(() => findRecentRepeats(meals, 7).slice(0, 3), [meals]);
 
   const dayMeals = useMemo(
@@ -67,28 +91,21 @@ export default function Historial() {
     [meals, selectedDate]
   );
 
+  const monthName = capitalize(format(selectedDate, 'MMMM yyyy', { locale: es }));
   const dayLabel = capitalize(format(selectedDate, "EEEE d 'de' MMMM", { locale: es }));
 
-  const confirmDelete = (meal: Meal) => {
-    const brand = BRANDS_BY_ID[meal.brand_id];
-    Alert.alert(
-      'Eliminar antojo',
-      `¿Seguro que quieren borrar ${meal.item ?? brand?.name ?? 'esta comida'} del historial?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            deleteMeal.mutate(meal.id, {
-              onError: (error) => {
-                Alert.alert('No se pudo eliminar', getErrorMessage(error));
-              },
-            });
-          },
-        },
-      ]
-    );
+  const handleDeleteConfirmed = async () => {
+    if (!mealToDelete) return;
+    setDeleting(true);
+    deleteMeal.mutate(mealToDelete.id, {
+      onSettled: () => {
+        setDeleting(false);
+        setMealToDelete(null);
+      },
+      onError: (error) => {
+        Alert.alert('Error', getErrorMessage(error));
+      },
+    });
   };
 
   if (isLoading) {
@@ -146,6 +163,19 @@ export default function Historial() {
         <>
           <MealCalendar meals={meals} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
+          {/* Tarjeta de Gasto del Mes Seleccionado */}
+          <View style={[styles.spendCard, SHADOWS.soft]}>
+            <View style={styles.spendIconWrap}>
+              <DollarSign size={20} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.spendLabel}>Gasto total en comida ({monthName})</Text>
+              <Text style={styles.spendAmount}>
+                ${monthSpend.toLocaleString('es-CL')} CLP
+              </Text>
+            </View>
+          </View>
+
           {repeats.length > 0 && (
             <View style={[styles.repeatBanner, SHADOWS.soft]}>
               <Text style={styles.repeatEmoji}>🙈</Text>
@@ -195,7 +225,7 @@ export default function Historial() {
             <View style={styles.favoriteRow}>
               <Sparkles size={14} color={COLORS.warning} />
               <Text style={styles.favoriteText}>
-                Su favorita es{' '}
+                Su favorita de todos los tiempos es{' '}
                 <Text style={styles.favoriteName}>
                   {stats.topBrand.emoji} {stats.topBrand.name}
                 </Text>{' '}
@@ -242,6 +272,11 @@ export default function Historial() {
                           {formatMealTime(item.eaten_at)} · {timeAgo(item.eaten_at)}
                         </Text>
                         {item.item && <Text style={styles.itemText}>{item.item}</Text>}
+                        {item.price != null && item.price > 0 && (
+                          <Text style={styles.priceText}>
+                            ${item.price.toLocaleString('es-CL')} CLP
+                          </Text>
+                        )}
                         {item.rating != null && item.rating > 0 && (
                           <View style={styles.ratingRow}>
                             <StarRating value={item.rating} size={13} readOnly />
@@ -262,7 +297,7 @@ export default function Historial() {
                       </View>
 
                       <BouncyPressable
-                        onPress={() => confirmDelete(item)}
+                        onPress={() => setMealToDelete(item)}
                         haptic
                         scaleTo={0.85}
                         hitSlop={10}
@@ -280,6 +315,46 @@ export default function Historial() {
           )}
         </>
       )}
+
+      {/* Modal de Doble Confirmación para Eliminar Comida */}
+      <Modal
+        visible={mealToDelete !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMealToDelete(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMealToDelete(null)} />
+          <View style={[styles.modalCard, SHADOWS.card]}>
+            <Text style={{ fontSize: 36, alignSelf: 'center' }}>🗑️</Text>
+            <Text style={styles.modalTitle}>¿Eliminar esta comida?</Text>
+            <Text style={styles.modalSub}>
+              {mealToDelete?.item
+                ? `¿Seguro que quieren borrar "${mealToDelete.item}" del historial?`
+                : '¿Seguro que quieren eliminar este registro?'}
+               Esta acción se actualizará en ambos teléfonos.
+            </Text>
+
+            <View style={styles.modalBtnRow}>
+              <Button
+                label="Cancelar"
+                variant="ghost"
+                onPress={() => setMealToDelete(null)}
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+              <Button
+                label="Sí, eliminar"
+                variant="danger"
+                loading={deleting}
+                onPress={handleDeleteConfirmed}
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -326,6 +401,30 @@ const styles = StyleSheet.create({
   },
   bannerTitle: { fontFamily: FONTS.bold, fontSize: 14, color: COLORS.textPrimary },
   bannerText: { fontSize: 11.5, color: COLORS.textSecondary, marginTop: 2, lineHeight: 17 },
+  spendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 20,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  spendIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  spendLabel: { fontSize: 11.5, color: COLORS.textSecondary, fontFamily: FONTS.semibold },
+  spendAmount: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.primary, marginTop: 1 },
   repeatBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -409,6 +508,12 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semibold,
     marginTop: 2,
   },
+  priceText: {
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    marginTop: 2,
+  },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   ratingText: { fontSize: 10, color: COLORS.textSecondary, fontFamily: FONTS.bold },
   addedByBadge: {
@@ -427,9 +532,9 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   deleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: `${COLORS.danger}14`,
     alignItems: 'center',
     justifyContent: 'center',
@@ -451,4 +556,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(74,53,49,0.38)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 22,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.lg,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  modalTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: 19,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  modalSub: {
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 18,
+    lineHeight: 19,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: 10 },
 });

@@ -54,6 +54,7 @@ async function fetchMeals(coupleId: string, brandId?: string): Promise<Meal[]> {
       couple_id: data.couple_id,
       brand_id: data.brand_id,
       item: data.item ?? null,
+      price: data.price ?? null,
       rating: data.rating ?? null,
       notes: data.notes ?? null,
       eaten_at: data.eaten_at,
@@ -84,6 +85,7 @@ export type NewMeal = {
   couple_id: string;
   brand_id: string;
   item: string | null;
+  price?: number | null;
   rating: number | null;
   eaten_at: string;
   added_by?: string | null;
@@ -101,6 +103,7 @@ export function useAddMeal(coupleId: string | null | undefined) {
           couple_id: coupleId ?? 'local-couple',
           brand_id: meal.brand_id,
           item: meal.item,
+          price: meal.price ?? null,
           rating: meal.rating,
           notes: null,
           eaten_at: meal.eaten_at,
@@ -123,6 +126,7 @@ export function useAddMeal(coupleId: string | null | undefined) {
         couple_id: meal.couple_id,
         brand_id: meal.brand_id,
         item: meal.item,
+        price: meal.price ?? null,
         rating: meal.rating,
         notes: null,
         eaten_at: meal.eaten_at,
