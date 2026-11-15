@@ -4,7 +4,9 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   addDoc,
+  updateDoc,
   deleteDoc,
   doc,
   onSnapshot,
@@ -12,7 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { Meal } from '@/constants/brands';
+import type { Meal, UserReview } from '@/constants/brands';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 
 const LOCAL_MEALS_KEY = '@ideacomida_local_meals';
@@ -42,7 +44,6 @@ async function fetchMeals(coupleId: string, brandId?: string): Promise<Meal[]> {
   }
 
   const mealsRef = collection(db, 'meals');
-  // Sin orderBy en la consulta: evita requerir un índice compuesto en Firestore.
   const q = query(mealsRef, where('couple_id', '==', coupleId));
 
   const querySnapshot = await getDocs(q);
@@ -60,6 +61,7 @@ async function fetchMeals(coupleId: string, brandId?: string): Promise<Meal[]> {
       eaten_at: data.eaten_at,
       created_at: data.created_at ?? new Date().toISOString(),
       added_by: data.added_by ?? null,
+      reviews: data.reviews ?? {},
     });
   });
 
@@ -97,6 +99,14 @@ export function useAddMeal(coupleId: string | null | undefined) {
 
   return useMutation({
     mutationFn: async (meal: NewMeal): Promise<Meal> => {
+      const initialReviews: Record<string, UserReview> = {};
+      if (meal.added_by && meal.rating && meal.rating > 0) {
+        initialReviews[meal.added_by] = {
+          rating: meal.rating,
+          user_name: meal.added_by,
+        };
+      }
+
       if (isLocal) {
         const newMeal: Meal = {
           id: 'local-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
@@ -109,6 +119,7 @@ export function useAddMeal(coupleId: string | null | undefined) {
           eaten_at: meal.eaten_at,
           created_at: new Date().toISOString(),
           added_by: meal.added_by ?? null,
+          reviews: initialReviews,
         };
         const current = await fetchLocalMeals();
         const updated = [newMeal, ...current];
@@ -118,6 +129,7 @@ export function useAddMeal(coupleId: string | null | undefined) {
 
       const docRef = await addDoc(collection(db, 'meals'), {
         ...meal,
+        reviews: initialReviews,
         created_at: new Date().toISOString(),
       });
 
@@ -132,6 +144,7 @@ export function useAddMeal(coupleId: string | null | undefined) {
         eaten_at: meal.eaten_at,
         created_at: new Date().toISOString(),
         added_by: meal.added_by ?? null,
+        reviews: initialReviews,
       };
     },
     onSuccess: (meal) => {
@@ -146,6 +159,63 @@ export function useAddMeal(coupleId: string | null | undefined) {
 
       prepend(mealKeys.couple(coupleId));
       prepend(mealKeys.brand(coupleId, meal.brand_id));
+      void queryClient.invalidateQueries({ queryKey: mealKeys.couple(coupleId) });
+    },
+  });
+}
+
+export function useAddReviewMeal(coupleId: string | null | undefined) {
+  const queryClient = useQueryClient();
+  const isLocal = coupleId === 'local-couple' || coupleId === 'couple-shared' || !isFirebaseConfigured;
+
+  return useMutation({
+    mutationFn: async ({
+      mealId,
+      userName,
+      rating,
+      text,
+    }: {
+      mealId: string;
+      userName: string;
+      rating: number;
+      text?: string | null;
+    }) => {
+      const reviewObj: UserReview = { rating, text: text ?? null, user_name: userName };
+
+      if (isLocal) {
+        const current = await fetchLocalMeals();
+        const updated = current.map((m) => {
+          if (m.id === mealId) {
+            return {
+              ...m,
+              reviews: {
+                ...(m.reviews ?? {}),
+                [userName]: reviewObj,
+              },
+            };
+          }
+          return m;
+        });
+        await AsyncStorage.setItem(LOCAL_MEALS_KEY, JSON.stringify(updated));
+        return { mealId, userName, reviewObj };
+      }
+
+      const mealRef = doc(db, 'meals', mealId);
+      const mealSnap = await getDoc(mealRef);
+      if (mealSnap.exists()) {
+        const data = mealSnap.data();
+        const existingReviews = data.reviews ?? {};
+        await updateDoc(mealRef, {
+          reviews: {
+            ...existingReviews,
+            [userName]: reviewObj,
+          },
+        });
+      }
+      return { mealId, userName, reviewObj };
+    },
+    onSuccess: () => {
+      if (!coupleId) return;
       void queryClient.invalidateQueries({ queryKey: mealKeys.couple(coupleId) });
     },
   });

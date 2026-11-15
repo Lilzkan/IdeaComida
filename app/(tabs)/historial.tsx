@@ -2,16 +2,20 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { format, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { DollarSign, Link2, Sparkles, Star, Trash2, User } from 'lucide-react-native';
+import { DollarSign, Link2, MessageSquare, Sparkles, Star, Trash2, User } from 'lucide-react-native';
 
 import MealCalendar from '@/components/MealCalendar';
 import StarRating from '@/components/StarRating';
@@ -22,7 +26,7 @@ import Text from '@/components/ui/Text';
 import { COLORS } from '@/constants/colors';
 import { BRANDS_BY_ID, type Meal } from '@/constants/brands';
 import { FONTS, RADIUS, SHADOWS } from '@/constants/theme';
-import { useDeleteMeal, useMeals } from '@/hooks/useMeals';
+import { useAddReviewMeal, useDeleteMeal, useMeals } from '@/hooks/useMeals';
 import { useRefresh } from '@/hooks/useRefresh';
 import { getErrorMessage } from '@/lib/errors';
 import { formatMealTime, timeAgo } from '@/lib/format';
@@ -40,10 +44,17 @@ export default function Historial() {
   const { data: meals = [], isLoading, refetch } = useMeals(profile?.couple_id);
   const { refreshing, onRefresh } = useRefresh(refetch);
   const deleteMeal = useDeleteMeal(profile?.couple_id);
+  const addReviewMutation = useAddReviewMeal(profile?.couple_id);
 
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Estado para modal de reseña
+  const [reviewMeal, setReviewMeal] = useState<Meal | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
 
   const stats = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -106,6 +117,38 @@ export default function Historial() {
         Alert.alert('Error', getErrorMessage(error));
       },
     });
+  };
+
+  const openReviewModal = (meal: Meal) => {
+    setReviewMeal(meal);
+    const existing = profile?.name ? meal.reviews?.[profile.name] : null;
+    setReviewRating(existing?.rating ?? 0);
+    setReviewText(existing?.text ?? '');
+  };
+
+  const handleSaveReview = async () => {
+    if (!reviewMeal || !profile?.name || reviewRating === 0) {
+      Alert.alert('Falta calificación', 'Por favor selecciona tus estrellas (1 a 5).');
+      return;
+    }
+
+    setSavingReview(true);
+    try {
+      await addReviewMutation.mutateAsync({
+        mealId: reviewMeal.id,
+        userName: profile.name,
+        rating: reviewRating,
+        text: reviewText.trim() || null,
+      });
+
+      setReviewMeal(null);
+      setReviewRating(0);
+      setReviewText('');
+    } catch {
+      Alert.alert('Error', 'No se pudo guardar la reseña.');
+    } finally {
+      setSavingReview(false);
+    }
   };
 
   if (isLoading) {
@@ -254,6 +297,8 @@ export default function Historial() {
             <View style={styles.mealList}>
               {dayMeals.map((item) => {
                 const brand = BRANDS_BY_ID[item.brand_id];
+                const reviewsList = Object.values(item.reviews ?? {});
+
                 return (
                   <View key={item.id} style={[styles.card, SHADOWS.soft]}>
                     <View style={styles.mealRow}>
@@ -277,23 +322,41 @@ export default function Historial() {
                             ${item.price.toLocaleString('es-CL')} CLP
                           </Text>
                         )}
-                        {item.rating != null && item.rating > 0 && (
+
+                        {/* Reseñas individuales de Ignacio e Isidora */}
+                        {reviewsList.length > 0 ? (
+                          <View style={styles.reviewsListContainer}>
+                            {reviewsList.map((rev) => (
+                              <View key={rev.user_name} style={styles.reviewChip}>
+                                <User
+                                  size={11}
+                                  color={rev.user_name === 'Ignacio' ? '#1E3A8A' : '#881337'}
+                                />
+                                <Text style={styles.reviewUserName}>{rev.user_name}:</Text>
+                                <StarRating value={rev.rating} size={11} readOnly />
+                                <Text style={styles.reviewRatingVal}>{rev.rating}/5</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : item.rating != null && item.rating > 0 ? (
                           <View style={styles.ratingRow}>
                             <StarRating value={item.rating} size={13} readOnly />
                             <Text style={styles.ratingText}>{item.rating}/5</Text>
                           </View>
-                        )}
-                        {item.added_by && (
-                          <View style={styles.addedByBadge}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <User
-                                size={12}
-                                color={item.added_by === 'Ignacio' ? '#1E3A8A' : '#881337'}
-                              />
-                              <Text style={styles.addedByText}>{item.added_by}</Text>
-                            </View>
-                          </View>
-                        )}
+                        ) : null}
+
+                        <BouncyPressable
+                          onPress={() => openReviewModal(item)}
+                          haptic
+                          style={styles.addReviewBtn}
+                        >
+                          <MessageSquare size={12} color={COLORS.primary} />
+                          <Text style={styles.addReviewText}>
+                            {item.reviews?.[profile?.name ?? '']
+                              ? 'Editar mi reseña'
+                              : '💬 Calificar mi versión'}
+                          </Text>
+                        </BouncyPressable>
                       </View>
 
                       <BouncyPressable
@@ -354,6 +417,64 @@ export default function Historial() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Modal para que Ignacio o Isidora den su propia reseña */}
+      <Modal
+        visible={reviewMeal !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReviewMeal(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setReviewMeal(null)} />
+          <View style={[styles.modalCard, SHADOWS.card]}>
+            <Text style={{ fontSize: 36, alignSelf: 'center' }}>⭐</Text>
+            <Text style={styles.modalTitle}>Tu reseña ({profile?.name ?? 'Usuario'})</Text>
+            <Text style={styles.modalSub}>
+              ¿Qué te pareció esta comida en {BRANDS_BY_ID[reviewMeal?.brand_id ?? '']?.name ?? 'la marca'}?
+            </Text>
+
+            <View style={{ alignItems: 'center', marginVertical: 12 }}>
+              <StarRating
+                value={reviewRating}
+                onChange={setReviewRating}
+                size={34}
+                color={COLORS.accent}
+                disabledColor={COLORS.border}
+                showText
+              />
+            </View>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nota corta (opcional. Ej. ¡Estaba riquísimo!)"
+              placeholderTextColor={COLORS.textSecondary}
+              value={reviewText}
+              onChangeText={setReviewText}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <Button
+                label="Cancelar"
+                variant="ghost"
+                onPress={() => setReviewMeal(null)}
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+              <Button
+                label="Guardar reseña"
+                onPress={handleSaveReview}
+                loading={savingReview}
+                fullWidth={false}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );
@@ -516,21 +637,29 @@ const styles = StyleSheet.create({
   },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   ratingText: { fontSize: 10, color: COLORS.textSecondary, fontFamily: FONTS.bold },
-  addedByBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: COLORS.surface,
+  reviewsListContainer: { marginTop: 6, gap: 4 },
+  reviewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: COLORS.background,
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: RADIUS.pill,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+    alignSelf: 'flex-start',
+  },
+  reviewUserName: { fontSize: 11, fontFamily: FONTS.bold, color: COLORS.textPrimary },
+  reviewRatingVal: { fontSize: 10, fontFamily: FONTS.semibold, color: COLORS.textSecondary },
+  addReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 6,
+    alignSelf: 'flex-start',
   },
-  addedByText: {
-    fontSize: 10,
-    fontFamily: FONTS.semibold,
-    color: COLORS.textSecondary,
-  },
+  addReviewText: { fontSize: 11, fontFamily: FONTS.semibold, color: COLORS.primary },
   deleteButton: {
     width: 34,
     height: 34,
@@ -584,8 +713,20 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     textAlign: 'center',
     marginTop: 6,
-    marginBottom: 18,
+    marginBottom: 14,
     lineHeight: 19,
   },
-  modalBtnRow: { flexDirection: 'row', gap: 10 },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.background,
+    fontFamily: FONTS.regular,
+    marginVertical: 10,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
 });

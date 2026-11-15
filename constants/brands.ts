@@ -176,6 +176,12 @@ export const BRANDS_BY_ID: Record<string, Brand> = Object.fromEntries(
   BRANDS.map((b) => [b.id, b])
 );
 
+export type UserReview = {
+  rating: number;
+  text?: string | null;
+  user_name: string;
+};
+
 export type Meal = {
   id: string;
   couple_id: string;
@@ -187,4 +193,5 @@ export type Meal = {
   eaten_at: string;
   created_at: string;
   added_by?: string | null;
+  reviews?: Record<string, UserReview>;
 };
