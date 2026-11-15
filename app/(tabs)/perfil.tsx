@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronRight, Heart, LogOut, Pencil, Settings, Sparkles, User, Users } from 'lucide-react-native';
+import { ChevronRight, Heart, LogOut, Pencil, Settings, User, Users } from 'lucide-react-native';
 
 import BouncyPressable from '@/components/ui/BouncyPressable';
 import Button from '@/components/ui/Button';
@@ -49,7 +49,6 @@ function MenuItem({ icon, title, subtitle, onPress }: MenuItemProps) {
 export default function Perfil() {
   const router = useRouter();
   const { profile, signOut, updateName } = useStore();
-  const savedDeals = useStore((state) => state.savedDeals);
 
   const [editVisible, setEditVisible] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile?.name ?? '');
@@ -109,25 +108,14 @@ export default function Perfil() {
       </View>
 
       <View style={[styles.profileCard, SHADOWS.card]}>
-        {(() => {
-          const isIgnacio = profile?.name === 'Ignacio';
-          const avatarBg = isIgnacio ? '#D1E8FF' : '#FCE7EE';
-          const avatarBorder = isIgnacio ? '#60A5FA' : '#F472B6';
-          const avatarColor = isIgnacio ? '#1E3A8A' : '#881337';
+        <View style={[styles.avatarRing, { borderColor: COLORS.primarySoft }]}>
+          <View style={[styles.avatar, { backgroundColor: COLORS.surfaceWarm }]}>
+            <User size={36} color={COLORS.primary} />
+          </View>
+        </View>
 
-          return (
-            <>
-              <View style={[styles.avatarRing, { borderColor: avatarBorder }]}>
-                <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-                  <User size={36} color={avatarColor} />
-                </View>
-              </View>
-
-              <Text style={styles.nameText}>{profile?.name ?? 'Usuario'}</Text>
-              <Text style={styles.emailText}>Usuario activo</Text>
-            </>
-          );
-        })()}
+        <Text style={styles.nameText}>{profile?.name ?? 'Usuario'}</Text>
+        <Text style={styles.emailText}>{profile?.email ?? 'Cuenta conectada'}</Text>
 
         <View style={styles.tagRow}>
           <View style={styles.coupleTag}>
@@ -138,13 +126,6 @@ export default function Perfil() {
             )}
             <Text style={styles.coupleTagText}>
               {profile?.couple_id ? 'En pareja' : 'Sin pareja vinculada'}
-            </Text>
-          </View>
-
-          <View style={[styles.coupleTag, styles.savedTag]}>
-            <Sparkles size={13} color={COLORS.warning} />
-            <Text style={styles.coupleTagText}>
-              {savedDeals.length} cupón{savedDeals.length === 1 ? '' : 'es'}
             </Text>
           </View>
         </View>
@@ -162,30 +143,9 @@ export default function Perfil() {
       />
 
       <MenuItem
-        icon={<Users size={18} color={COLORS.primary} />}
-        title="Cambiar de usuario"
-        subtitle={`Actualmente: ${profile?.name ?? 'Usuario'}`}
-        onPress={() => {
-          Alert.alert(
-            'Cambiar de usuario',
-            '¿Quieres elegir entre Ignacio e Isidora?',
-            [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Cambiar',
-                onPress: () => {
-                  void signOut();
-                },
-              },
-            ]
-          );
-        }}
-      />
-
-      <MenuItem
         icon={<Pencil size={18} color={COLORS.primary} />}
         title="Editar perfil"
-        subtitle="Cambia tu nombre"
+        subtitle="Cambia tu nombre de usuario"
         onPress={openEdit}
       />
 
@@ -221,8 +181,8 @@ export default function Perfil() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setEditVisible(false)} />
           <View style={[styles.modalCard, SHADOWS.card]}>
             <Text style={{ fontSize: 30, alignSelf: 'center' }}>✏️</Text>
-            <Text style={styles.modalTitle}>Editar perfil</Text>
-            <Text style={styles.modalSub}>¿Cómo te llamas?</Text>
+            <Text style={styles.modalTitle}>Editar nombre</Text>
+            <Text style={styles.modalSub}>¿Cómo quieres que te llamemos?</Text>
 
             <TextInput
               style={styles.modalInput}
@@ -319,7 +279,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  savedTag: { backgroundColor: COLORS.surfaceWarm },
   coupleTagText: { color: COLORS.textPrimary, fontSize: 11, fontFamily: FONTS.semibold },
   sectionLabel: {
     fontFamily: FONTS.semibold,

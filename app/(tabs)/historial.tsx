@@ -105,6 +105,17 @@ export default function Historial() {
   const monthName = capitalize(format(selectedDate, 'MMMM yyyy', { locale: es }));
   const dayLabel = capitalize(format(selectedDate, "EEEE d 'de' MMMM", { locale: es }));
 
+  const partnerName = useMemo(() => {
+    if (!profile?.name) return 'tu pareja';
+    for (const m of meals) {
+      if (m.added_by && m.added_by !== profile.name) return m.added_by;
+      for (const rName of Object.keys(m.reviews ?? {})) {
+        if (rName !== profile.name) return rName;
+      }
+    }
+    return 'tu pareja';
+  }, [meals, profile?.name]);
+
   const handleDeleteConfirmed = async () => {
     if (!mealToDelete) return;
     setDeleting(true);
@@ -300,8 +311,7 @@ export default function Historial() {
                 const reviewsList = Object.values(item.reviews ?? {});
                 const isCreator = Boolean(profile?.name && item.added_by && profile.name === item.added_by);
                 const hasMyReview = Boolean(profile?.name && item.reviews?.[profile.name]);
-                const partnerName = profile?.name === 'Ignacio' ? 'Isidora' : 'Ignacio';
-                const hasPartnerReview = Boolean(item.reviews?.[partnerName]);
+                const hasPartnerReview = Boolean(partnerName && item.reviews?.[partnerName]);
 
                 return (
                   <View key={item.id} style={[styles.card, SHADOWS.soft]}>
@@ -327,14 +337,14 @@ export default function Historial() {
                           </Text>
                         )}
 
-                        {/* Reseñas individuales de Ignacio e Isidora */}
+                        {/* Reseñas individuales */}
                         {reviewsList.length > 0 ? (
                           <View style={styles.reviewsListContainer}>
                             {reviewsList.map((rev) => (
                               <View key={rev.user_name} style={styles.reviewChip}>
                                 <User
                                   size={11}
-                                  color={rev.user_name === 'Ignacio' ? '#1E3A8A' : '#881337'}
+                                  color={rev.user_name === profile?.name ? COLORS.primary : '#881337'}
                                 />
                                 <Text style={styles.reviewUserName}>{rev.user_name}:</Text>
                                 <StarRating value={rev.rating} size={11} readOnly />
